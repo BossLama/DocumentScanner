@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <script src="https://docs.opencv.org/master/opencv.js" onload="onOpenCvLoaded();" async></script>
+</head>
+<body>
+    <video id="video" width="1080" height="1920" autoplay></video>
+    <canvas id="canvas" width="640" height="480" style="rotate: 90deg"></canvas>
+    <button onclick="scanDocument()">Scan Document</button>
+
+    <script>
+        let video = document.getElementById('video');
+        let canvas = document.getElementById('canvas');
+        let context = canvas.getContext('2d');
+
+        function onOpenCvLoaded() {
+            setInterval(() => {
+                displayDocument();
+            }, 200);
+        }
+
+
+        function displayDocument() {
+            // Extract the document from the video stream
+            let extractedDocument = scanDocument();
+
+            // Display the extracted document
+            cv.imshow('canvas', extractedDocument);
+
+            // Clean up
+            extractedDocument.delete(); 
+        }
+
+        function scanDocument() {
+            // Capture video frame
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            // Convert canvas image to OpenCV Mat
+            let src = cv.imread(canvas);
+
+            // Convert image to grayscale
+            let gray = new cv.Mat();
+            cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+
+            // Apply adaptive thresholding to enhance document edges
+            let threshold = new cv.Mat();
+            cv.adaptiveThreshold(gray, threshold, 255, cv.ADAPTIVE_THRESH_MEAN_C, cv.THRESH_BINARY, 11, 2);
+
+            // Find contours in the thresholded image
+            let contours = new cv.MatVector();
+            let hierarchy = new cv.Mat();
+            cv.findContours(threshold, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+            // Find the largest contour (assumed to be the document)
+            let largestContourIndex = 0;
+            let largestContourArea = 0;
+            for (let i = 0; i < contours.size(); i++) {
+                let contour = contours.get(i);
+                let contourArea = cv.contourArea(contour);
+                if (contourArea > largestContourArea) {
+                    largestContourIndex = i;
+                    largestContourArea = contourArea;
+                }
+            }
+
+            // Create a mask for the document
+            let mask = cv.Mat.zeros(src.rows, src.cols, cv.CV_8UC1);
+            cv.drawContours(mask, contours, largestContourIndex, new cv.Scalar(255), cv.FILLED);
+
+            // Apply the mask to the original image
+            let extractedDocument = new cv.Mat();
+            src.copyTo(extractedDocument, mask);
+
+            // Clean up
+            gray.delete();
+            threshold.delete();
+            contours.delete();
+            hierarchy.delete();
+            mask.delete();
+
+            // Return the extracted document
+            return extractedDocument;
+        }
+
+        // Access the webcam stream
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(function(stream) {
+                video.srcObject = stream;
+            })
+            .catch(function(error) {
+                console.log('Error accessing webcam:', error);
+            });
+    </script>
+</body>
+</html>
